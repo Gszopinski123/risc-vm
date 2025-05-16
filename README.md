@@ -1,2 +1,2 @@
 # risc-vm
-My Implementation of VM written in 16-bit RISC-V
+My Implementation of a VM written in 16-bit RISC-V
