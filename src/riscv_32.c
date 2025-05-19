@@ -9,6 +9,7 @@ void handle_interrupt(int signal);
 uint32_t mem_read(uint32_t address);
 void handle_interrupt(int signal);
 void checkRegister(int reg);
+uint32_t bit_extend(uint32_t val, int bitcnt);
 // RISC-V is Little-Endian
 // Memory Size for a 32 bit machine
 #define MEMORY_MAX ((uint64_t)1 << 30)
@@ -49,7 +50,8 @@ uint32_t reg[xCOUNT];
 
 //opcodes are 7 bits
 enum {
-    r_type = 0x33
+    r_type = 0x33,
+    i_type = 0x13
 };
 //funct3
 enum 
@@ -62,13 +64,23 @@ enum
     sr = 0x5,//needs funct7
     slt = 0x2,// User determines if the values are signed or not
     sltu = 0x3,
+    addi = 0x0,
+    xori = 0x4,
+    ori = 0x6,
+    andi = 0x7,
+    slli = 0x1,
+    sri = 0x5,
+    slti = 0x2,
+    sltiu = 0x3
 };
 enum
 {
     add = 0x00,
     sub = 0x20,
     srl = 0x00,
-    sra = 0x20
+    sra = 0x20,
+    srli = 0x00,
+    srai = 0x20
 };
 
 
@@ -89,7 +101,7 @@ int main(int argc, char* argv[]) {
     reg[pc] = PC_START;
     int running = 1;
     int count = 0;
-    while (running && count != 10) {
+    while (running && count != 19) {
         uint32_t instruction = mem_read(reg[pc]);
         reg[pc] += 4;
         uint8_t opcode = (instruction & 0x7F);
@@ -103,7 +115,7 @@ int main(int argc, char* argv[]) {
                 uint32_t r2 = ((instruction >> 15) & 0x1f);
                 uint32_t check = ((instruction >> 7) & 0x1f);
                 checkRegister(check);
-                uint32_t rd = reg[check];
+                uint32_t rd = check;
                 printf("r1: %d, r2: %d, rd: %d\n",r1,r2,rd);
                 switch(funct3) {
                     case arith:
@@ -190,18 +202,18 @@ int main(int argc, char* argv[]) {
                         }
                         break;
                     }
-                    case slt:
+                    case slt://this is fine
                     {
                         printf("slt\n");
                         reg[rd] = (reg[r1] < reg[r2] ? 0x00000001 : 0x00000000);
-                        printf("after slt: rd: %d\n");
+                        printf("after slt: rd: %d\n",reg[rd]);
                         break;
                     }
-                    case sltu:
+                    case sltu://need to fix this technically
                     {
                         printf("sltu\n");
                         reg[rd] = (reg[r1] < reg[r2] ? 0x00000001 : 0x00000000);
-                        printf("after sltu: rd: %d\n");
+                        printf("after sltu: rd: %d\n",reg[rd]);
                         break;
                     }
                     default:
@@ -210,6 +222,97 @@ int main(int argc, char* argv[]) {
                         break;
                     }
                 }
+                break;
+            case i_type:
+            {
+                printf("I_type\n");
+                uint8_t funct3 = ((instruction >> 12) & 0x7);
+                uint32_t check = ((instruction >> 7) & 0x1f);
+                uint32_t r1 = ((instruction >> 15) & 0x1f);
+                uint32_t imm = bit_extend(((instruction >> 20) & 0xfff),12);
+                checkRegister(check);
+                uint32_t rd = check;
+                printf("r1: %d, imm: %d, rd: %d\n",r1,imm,rd);
+                switch(funct3) {
+                    case addi:
+                    {
+                        printf("addi\n");
+                        reg[rd] = reg[r1] + imm;
+                        printf("after addi: %d\n",reg[rd]);
+                        break;
+                    }
+                    case xori:
+                    {
+                        printf("xori\n");
+                        reg[rd] = reg[r1] ^ imm;
+                        printf("after xori: %d\n",reg[rd]);
+                        break;
+                    }
+                    case ori:
+                    {
+                        printf("ori\n");
+                        reg[rd] = reg[r1] | imm;
+                        printf("after xori: %d\n",reg[rd]);
+                        break;
+                    }
+                    case andi:
+                    {
+                        printf("andi\n");
+                        reg[rd] = reg[r1] & imm;
+                        printf("after andi: %d\n",reg[rd]);
+                        break;
+                    }
+                    case slli:
+                    {
+                        printf("slli\n");
+                        uint32_t funct7 = imm & 0x3f00;
+                        reg[rd] = reg[r1] << (imm & 0x1f);
+                        printf("after slli: %d\n",reg[rd]);
+                        break;
+                    }
+                    case sri:
+                    {
+                        printf("sri\n");
+                        uint32_t funct7 = imm & 0x3f00;
+                        switch(funct7) {
+                            case srai:
+                            {
+                                printf("srai\n");
+                                uint32_t signbit = (((reg[r1] >> 31) & 1) << 31);
+                                for (int i = 0; i != (imm & 0x1f); i++)
+                                    reg[r1] = ((reg[r1] >> 1) | signbit);
+                                reg[rd] = reg[r1];
+                                printf("after srai: %d\n",reg[rd]);
+                                break;
+                            }
+                            case srli:
+                            {
+                                printf("srli\n");
+                                reg[rd] = reg[r1] >> (imm & 0x1f);
+                                printf("after srli: %d\n",reg[rd]);
+                                break;
+                            }
+                        }
+                        break;
+                    }
+                    case slti:
+                    {
+                        printf("slti\n");
+                        reg[rd] = (reg[r1] < bit_extend(imm,12) ? 0x00000001 : 0x00000000);
+                        printf("after slti: %d\n",reg[rd]);
+                        break;
+                    }
+                    case sltiu:
+                    {
+                        printf("sltiu\n");
+                        reg[rd] = (reg[r1] < imm ? 0x00000001 : 0x00000000);
+                        printf("after sltiu: %d\n",reg[rd]);
+                        break;
+                    }
+                }
+                
+
+            }
                 break;
             default:
             {
@@ -263,4 +366,19 @@ void checkRegister(int reg) {
     } else if (reg == 32) {
         abort();
     }
+}
+
+uint32_t bit_extend(uint32_t val, int bitcnt) {
+    uint32_t sign = (val >> (bitcnt - 1));
+    uint32_t dummy = 0;
+    for (int i = 0; i != bitcnt - 1; ++i) {
+        dummy |= (1 << i);
+    }
+    uint32_t rval;
+    if (sign) {
+        rval = ~((~val + 1) & dummy)+1;
+    } else {
+        rval = val;
+    }
+    return rval;
 }
