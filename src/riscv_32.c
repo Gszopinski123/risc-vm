@@ -11,11 +11,8 @@ uint32_t mem_read(uint32_t address);
 Elf32_Shdr *shdr;
 Elf32_Ehdr elfhdr;
 Elf32_Phdr *phdr;
-
-
 uint8_t memory[MEMORY_MAX];
 uint32_t reg[xCOUNT];
-
 enum {
     ci_css_cr = 0x2,
     cl_ciw = 0x0,
@@ -23,6 +20,7 @@ enum {
     r_type = 0x33,
     i_type = 0x13,
     i2_typ = 0x03,
+    s_type = 0x23
 };
 enum 
 {
@@ -53,6 +51,9 @@ enum
     sra = 0x20,
     srli = 0x00,
     srai = 0x20,
+    sb = 0x0,
+    sh = 0x1,
+    sw = 0x2,
     clwsp = 0x2,
     cswsp = 0x6,
     clw = 0x2,
@@ -91,10 +92,6 @@ int main(int argc, char* argv[]) {
         if (!read_objfile(fopen(argv[j],"rb"))) {
             printf("Failed to load Image\n");
         }
-        
-        // if (!read_image(argv[j])) {
-        //     printf("Failed to load Image!\n");
-        // }
     }
     signal(SIGINT, handle_interrupt);   
     enum { PC_START = 0xc000000};
@@ -102,17 +99,16 @@ int main(int argc, char* argv[]) {
     printf("Entry: 0x%x\n",elfhdr.e_entry);
     int running = 1;
     int count = 0;
-    while (running && count <= 8) {
+    while (running) {
         uint32_t instruction = mem_read(reg[pc]);
         uint8_t opcode = (instruction & 0x7F);
         uint8_t compressed = (instruction & 0x3);
         printf("Instruction: 0x%x\n",instruction);
         // printf("Opcode: 0x%x\n",opcode);
         // printf("count: %d\n",count);
-        count++;
         if (compressed != 0x3) {
             printf("compressed!\n");
-            reg[pc] += 2;//only loaded in a 2 bytes
+            
             switch (compressed) {
                 case ci_css_cr:
                 {
@@ -158,12 +154,34 @@ int main(int argc, char* argv[]) {
                     switch(funct4) {
                         case cjr:// check if register is the null register (zero)
                         {
-                            printf("cjr, cmv\n");
+                            uint8_t rs1 = ((instruction >> 7) & 0x1f);
+                            uint8_t rs2 = ((instruction >> 2) & 0x1f);
+                            if (rs2 == 0) {//cjr
+                                printf("cjr\n");
+                                reg[pc] = reg[rs1];
+                            } else {// cmv
+                                printf("cmv\n");
+                                reg[rs1] = reg[rs2];// Implicit + 0 at the end
+                            }
                             break;
                         }
                         case cjalr: // adding and ebreak
                         {
                             printf("cjalr, cadd, cebreak\n");
+                            uint8_t rs1_rd = ((instruction >> 7) & 0x1f);
+                            uint8_t rs2 = ((instruction >> 2) & 0x1f);
+                            if (rs2 == 0 && rs1_rd == 0) {//Ecall
+                                printf("cecall\n");
+                                // RAISE TRAPS but for now we will just end the program
+                                running = 0;
+                            } else if (rs2 == 0 && rs1_rd != 0) {
+                                printf("cjalr\n");
+                                reg[x1] = reg[pc] + 2;
+                                reg[pc] = reg[rs1_rd];
+                            } else {
+                                printf("cadd\n");
+                                reg[rs1_rd] += reg[rs2];
+                            }
                             break;
                         }
                         default:
@@ -181,11 +199,24 @@ int main(int argc, char* argv[]) {
                         case caddi4spn:
                         {
                             printf("caddi4spn");
+                            uint32_t imm = (((instruction >> 5) & 0x1) << 3) | (((instruction >> 6) & 0x1) << 2) | 
+                                           (((instruction >> 7) & 0xf) << 6) | (((instruction >> 11) & 0x3) << 4);
+                            uint8_t rd = ((instruction >> 2) & 0x7);
+                            reg[rd] = x2 + (imm * 4);
                             break;
                         }
                         case clw:
                         {
                             printf("clw\n");
+                            uint8_t rd = ((instruction >> 2) & 0x7);
+                            uint8_t rs1 = ((instruction >> 7) & 0x7);
+                            uint32_t imm = (((instruction >> 5) & 0x1) << 6) | (((instruction >> 6) & 0x1) << 2) | (((instruction >> 10) & 0x7) << 3);
+                            reg[rd] = 0;
+                            reg[rd] |= memory[((4*imm) + reg[rs1])];
+                            reg[rd] |= (memory[((4*imm) + reg[rs1])+1] << 8);
+                            reg[rd] |= (memory[((4*imm) + reg[rs1])+2] << 16);
+                            reg[rd] |= (memory[((4*imm) + reg[rs1])+3] << 24);
+                            printf("%d\n",reg[rd]);
                             break;
                         }
                         default:
@@ -295,279 +326,317 @@ int main(int argc, char* argv[]) {
                 default:
                     break;
             }
-            continue;
+            reg[pc] += 2;//only loaded in a 2 bytes   
+        } else {
+            switch (opcode) {
+                case r_type:
+                    printf("R_type\n");
+                    uint8_t funct3 = ((instruction >> 12) & 0x7);
+                    uint32_t r1 = ((instruction >> 15) & 0x1f);
+                    uint32_t r2 = ((instruction >> 20) & 0x1f);
+                    uint32_t check = ((instruction >> 7) & 0x1f);
+                    checkRegister(check);
+                    uint32_t rd = check;
+                    printf("r1: %d, r2: %d, rd: %d\n",r1,r2,rd);
+                    switch(funct3) {
+                        case arith:
+                        {
+                            printf("Arith\n");
+                            uint8_t funct7 = ((instruction >> 25) & 0x7f);
+                            switch (funct7) {
+                                case add: {
+                                    printf("add\n");
+                                    reg[rd] = reg[r1] + reg[r2];
+                                    printf("After addition; rd: %d\n",reg[rd]);
+                                    break;
+                                }
+                                case sub:
+                                {
+                                    printf("sub\n");
+                                    reg[rd] = reg[r1] - reg[r2];
+                                    printf("After Subtraction; rd: %d\n",reg[rd]);
+                                    break;
+                                }
+                                default:
+                                {
+                                    abort();
+                                    break;
+                                }
+                            }
+                            break;
+                        }
+                        case xor:
+                        {
+                            printf("xor\n");
+                            reg[rd] = reg[r1] ^ reg[r2];
+                            printf("After xor; rd: %d\n",reg[rd]);
+                            break;
+                        }
+                        case or:
+                        {
+                            printf("or\n");
+                            reg[rd] = reg[r1] | reg[r2];
+                            printf("After or; rd: %d\n",reg[rd]);
+                            break;
+                        }
+                        case and:
+                        {
+                            printf("and\n");
+                            reg[rd] = reg[r1] & reg[r2];
+                            printf("After and; rd: %d\n",reg[rd]);
+                            break;
+                        }
+                        case sll:
+                        {
+                            printf("sll\n");
+                            reg[rd] = reg[r1] << reg[r2];
+                            printf("After sll; rd: %d\n",reg[rd]);
+                            break;
+                        }
+                        case sr:
+                        {
+                            printf("sr\n");
+                            uint8_t funct7 = ((instruction >> 25) & 0x7f);
+                            switch (funct7) {
+                                case srl:
+                                {
+                                    printf("srl\n");
+                                    reg[rd] = reg[r1] >> reg[r2];
+                                    printf("After srl; rd: %d\n",reg[rd]);
+                                    break;
+                                }
+                                case sra:
+                                {
+                                    printf("sra\n");
+                                    uint32_t signbit = (((reg[r1] >> 31) & 1) << 31);
+                                    for (int i = 0; i != reg[r2]; i++)
+                                        reg[r1] = ((reg[r1] >> 1) | signbit);
+                                    reg[rd] = reg[r1];
+                                    printf("After sra; rd: %d\n",reg[rd]);
+                                    break;
+                                }
+                                default:
+                                {
+                                    abort();
+                                    break;
+                                }
+                            }
+                            break;
+                        }
+                        case slt://this is fine
+                        {
+                            printf("slt\n");
+                            reg[rd] = (reg[r1] < reg[r2] ? 0x00000001 : 0x00000000);
+                            printf("after slt: rd: %d\n",reg[rd]);
+                            break;
+                        }
+                        case sltu://need to fix this technically
+                        {
+                            printf("sltu\n");
+                            reg[rd] = (reg[r1] < reg[r2] ? 0x00000001 : 0x00000000);
+                            printf("after sltu: rd: %d\n",reg[rd]);
+                            break;
+                        }
+                        default:
+                        {
+                            abort();
+                            break;
+                        }
+                    }
+                    break;
+                case i_type:
+                {
+                    printf("I_type\n");
+                    uint8_t funct3 = ((instruction >> 12) & 0x7);
+                    uint32_t check = ((instruction >> 7) & 0x1f);
+                    uint32_t r1 = ((instruction >> 15) & 0x1f);
+                    uint32_t imm = bit_extend(((instruction >> 20) & 0xfff),12);
+                    checkRegister(check);
+                    uint32_t rd = check;
+                    printf("r1: %d, imm: %d, rd: %d\n",r1,imm,rd);
+                    switch(funct3) {
+                        case addi:
+                        {
+                            printf("addi\n");
+                            reg[rd] = reg[r1] + imm;
+                            printf("after addi: %d\n",reg[rd]);
+                            break;
+                        }
+                        case xori:
+                        {
+                            printf("xori\n");
+                            reg[rd] = reg[r1] ^ imm;
+                            printf("after xori: %d\n",reg[rd]);
+                            break;
+                        }
+                        case ori:
+                        {
+                            printf("ori\n");
+                            reg[rd] = reg[r1] | imm;
+                            printf("after xori: %d\n",reg[rd]);
+                            break;
+                        }
+                        case andi:
+                        {
+                            printf("andi\n");
+                            reg[rd] = reg[r1] & imm;
+                            printf("after andi: %d\n",reg[rd]);
+                            break;
+                        }
+                        case slli:
+                        {
+                            printf("slli\n");
+                            uint32_t funct7 = imm & 0x3f00;
+                            reg[rd] = reg[r1] << (imm & 0x1f);
+                            printf("after slli: %d\n",reg[rd]);
+                            break;
+                        }
+                        case sri:
+                        {
+                            printf("sri\n");
+                            uint32_t funct7 = imm & 0x3f00;
+                            switch(funct7) {
+                                case srai:
+                                {
+                                    printf("srai\n");
+                                    uint32_t signbit = (((reg[r1] >> 31) & 1) << 31);
+                                    for (int i = 0; i != (imm & 0x1f); i++)
+                                        reg[r1] = ((reg[r1] >> 1) | signbit);
+                                    reg[rd] = reg[r1];
+                                    printf("after srai: %d\n",reg[rd]);
+                                    break;
+                                }
+                                case srli:
+                                {
+                                    printf("srli\n");
+                                    reg[rd] = reg[r1] >> (imm & 0x1f);
+                                    printf("after srli: %d\n",reg[rd]);
+                                    break;
+                                }
+                            }
+                            break;
+                        }
+                        case slti:
+                        {
+                            printf("slti\n");
+                            reg[rd] = (reg[r1] < bit_extend(imm,12) ? 0x00000001 : 0x00000000);
+                            printf("after slti: %d\n",reg[rd]);
+                            break;
+                        }
+                        case sltiu:
+                        {
+                            printf("sltiu\n");
+                            reg[rd] = (reg[r1] < imm ? 0x00000001 : 0x00000000);
+                            printf("after sltiu: %d\n",reg[rd]);
+                            break;
+                        }
+                    }
+                    break;
+                }
+                case i2_typ:
+                {
+                    printf("i2_typ\n");
+                    uint8_t funct3 = ((instruction >> 12) & 0x7);
+                    uint32_t check = ((instruction >> 7) & 0x1f);
+                    uint32_t r1 = ((instruction >> 15) & 0x1f);
+                    uint32_t imm = bit_extend(((instruction >> 20) & 0xfff),12);
+                    uint32_t rd = check;
+                    switch(funct3) {
+                        case lb:
+                        {
+                            printf("lb\n");
+                            reg[rd] = 0;
+                            reg[rd] = memory[reg[r1]+imm];
+                            printf("after lb: %d\n",reg[rd]);
+                            break;
+                        }
+                        case lh:
+                        {
+                            printf("lh\n");
+                            reg[rd] = 0;
+                            reg[rd] |= memory[reg[r1]+imm];
+                            reg[rd] |= (memory[reg[r1]+imm+1] << 8);
+                            printf("after lh: %d\n",reg[rd]);
+                            break;
+                        }
+                        case lw:
+                        {
+                            printf("lw\n");
+                            reg[rd] = 0;
+                            reg[rd] |= memory[reg[r1]+imm];
+                            reg[rd] |= (memory[reg[r1]+imm+1] << 8);
+                            reg[rd] |= (memory[reg[r1]+imm+2] << 16);
+                            reg[rd] |= (memory[reg[r1]+imm+3] << 24);
+                            printf("after lw: %d\n",reg[rd]);
+                            break;
+                        }
+                        case lbu:
+                        {
+                            printf("lbu\n");
+                            reg[rd] = 0;
+                            reg[rd] = memory[reg[r1]+imm];
+                            printf("after lbu: %d\n",reg[rd]);
+                            break;
+                        }
+                        case lhu:
+                        {
+                            printf("lhu\n");
+                            reg[rd] = 0;
+                            reg[rd] |= memory[reg[r1]+imm];
+                            reg[rd] |= (memory[reg[r1]+imm+1] << 8);
+                            printf("after lhu: %d\n",reg[rd]);
+                            break;
+                        }
+                    }
+                    break;
+                }
+                case s_type:
+                {
+                    printf("s_type\n");
+                    uint8_t funct3 = ((instruction >> 12) & 0x7);
+                    uint32_t imm = bit_extend(((instruction >> 7) & 0x1f) | (((instruction >> 25) & 0x7f) << 5),12);
+                    uint8_t rs1 = ((instruction >> 15) & 0x1f);
+                    uint8_t rs2 = ((instruction >> 20) & 0x1f);
+                    switch(funct3) {
+                        case sb:
+                        {
+                            printf("sb\n");
+                            memory[reg[rs1] + imm] = (reg[rs2] & 0xff);
+                            break;
+                        }
+                        case sh:
+                        {
+                            printf("sh\n");
+                            memory[reg[rs1] + imm] = (reg[rs2] & 0xff);
+                            memory[reg[rs1] + imm + 1] = ((reg[rs2] >> 8) & 0xff);
+                            break;
+                        }
+                        case sw:
+                        {
+                            memory[reg[rs1] + imm] = (reg[rs2] & 0xff);
+                            memory[reg[rs1] + imm + 1] = ((reg[rs2] >> 8) & 0xff);
+                            memory[reg[rs1] + imm + 2] = ((reg[rs2] >> 16) & 0xff);
+                            memory[reg[rs1] + imm + 3] = ((reg[rs2] >> 24) & 0xff);
+                            break;
+                        }
+                        default:
+                        {
+                            break;
+                        }
+                    }
+                    break;
+                }
+                default:
+                {
+                    printf("No Matching Opcode Yet!\n");
+                    abort();
+                    break;
+                }
+                   
+            }
+            reg[pc] += 4;
+            count++;
         }
-        reg[pc] += 4;
-        switch (opcode) {
-            case r_type:
-                printf("R_type\n");
-                uint8_t funct3 = ((instruction >> 12) & 0x7);
-                uint32_t r1 = ((instruction >> 15) & 0x1f);
-                uint32_t r2 = ((instruction >> 20) & 0x1f);
-                uint32_t check = ((instruction >> 7) & 0x1f);
-                checkRegister(check);
-                uint32_t rd = check;
-                printf("r1: %d, r2: %d, rd: %d\n",r1,r2,rd);
-                switch(funct3) {
-                    case arith:
-                    {
-                        printf("Arith\n");
-                        uint8_t funct7 = ((instruction >> 25) & 0x7f);
-                        switch (funct7) {
-                            case add: {
-                                printf("add\n");
-                                reg[rd] = reg[r1] + reg[r2];
-                                printf("After addition; rd: %d\n",reg[rd]);
-                                break;
-                            }
-                            case sub:
-                            {
-                                printf("sub\n");
-                                reg[rd] = reg[r1] - reg[r2];
-                                printf("After Subtraction; rd: %d\n",reg[rd]);
-                                break;
-                            }
-                            default:
-                            {
-                                abort();
-                                break;
-                            }
-                        }
-                        break;
-                    }
-                    case xor:
-                    {
-                        printf("xor\n");
-                        reg[rd] = reg[r1] ^ reg[r2];
-                        printf("After xor; rd: %d\n",reg[rd]);
-                        break;
-                    }
-                    case or:
-                    {
-                        printf("or\n");
-                        reg[rd] = reg[r1] | reg[r2];
-                        printf("After or; rd: %d\n",reg[rd]);
-                        break;
-                    }
-                    case and:
-                    {
-                        printf("and\n");
-                        reg[rd] = reg[r1] & reg[r2];
-                        printf("After and; rd: %d\n",reg[rd]);
-                        break;
-                    }
-                    case sll:
-                    {
-                        printf("sll\n");
-                        reg[rd] = reg[r1] << reg[r2];
-                        printf("After sll; rd: %d\n",reg[rd]);
-                        break;
-                    }
-                    case sr:
-                    {
-                        printf("sr\n");
-                        uint8_t funct7 = ((instruction >> 25) & 0x7f);
-                        switch (funct7) {
-                            case srl:
-                            {
-                                printf("srl\n");
-                                reg[rd] = reg[r1] >> reg[r2];
-                                printf("After srl; rd: %d\n",reg[rd]);
-                                break;
-                            }
-                            case sra:
-                            {
-                                printf("sra\n");
-                                uint32_t signbit = (((reg[r1] >> 31) & 1) << 31);
-                                for (int i = 0; i != reg[r2]; i++)
-                                    reg[r1] = ((reg[r1] >> 1) | signbit);
-                                reg[rd] = reg[r1];
-                                printf("After sra; rd: %d\n",reg[rd]);
-                                break;
-                            }
-                            default:
-                            {
-                                abort();
-                                break;
-                            }
-                        }
-                        break;
-                    }
-                    case slt://this is fine
-                    {
-                        printf("slt\n");
-                        reg[rd] = (reg[r1] < reg[r2] ? 0x00000001 : 0x00000000);
-                        printf("after slt: rd: %d\n",reg[rd]);
-                        break;
-                    }
-                    case sltu://need to fix this technically
-                    {
-                        printf("sltu\n");
-                        reg[rd] = (reg[r1] < reg[r2] ? 0x00000001 : 0x00000000);
-                        printf("after sltu: rd: %d\n",reg[rd]);
-                        break;
-                    }
-                    default:
-                    {
-                        abort();
-                        break;
-                    }
-                }
-                break;
-            case i_type:
-            {
-                printf("I_type\n");
-                uint8_t funct3 = ((instruction >> 12) & 0x7);
-                uint32_t check = ((instruction >> 7) & 0x1f);
-                uint32_t r1 = ((instruction >> 15) & 0x1f);
-                uint32_t imm = bit_extend(((instruction >> 20) & 0xfff),12);
-                checkRegister(check);
-                uint32_t rd = check;
-                printf("r1: %d, imm: %d, rd: %d\n",r1,imm,rd);
-                switch(funct3) {
-                    case addi:
-                    {
-                        printf("addi\n");
-                        reg[rd] = reg[r1] + imm;
-                        printf("after addi: %d\n",reg[rd]);
-                        break;
-                    }
-                    case xori:
-                    {
-                        printf("xori\n");
-                        reg[rd] = reg[r1] ^ imm;
-                        printf("after xori: %d\n",reg[rd]);
-                        break;
-                    }
-                    case ori:
-                    {
-                        printf("ori\n");
-                        reg[rd] = reg[r1] | imm;
-                        printf("after xori: %d\n",reg[rd]);
-                        break;
-                    }
-                    case andi:
-                    {
-                        printf("andi\n");
-                        reg[rd] = reg[r1] & imm;
-                        printf("after andi: %d\n",reg[rd]);
-                        break;
-                    }
-                    case slli:
-                    {
-                        printf("slli\n");
-                        uint32_t funct7 = imm & 0x3f00;
-                        reg[rd] = reg[r1] << (imm & 0x1f);
-                        printf("after slli: %d\n",reg[rd]);
-                        break;
-                    }
-                    case sri:
-                    {
-                        printf("sri\n");
-                        uint32_t funct7 = imm & 0x3f00;
-                        switch(funct7) {
-                            case srai:
-                            {
-                                printf("srai\n");
-                                uint32_t signbit = (((reg[r1] >> 31) & 1) << 31);
-                                for (int i = 0; i != (imm & 0x1f); i++)
-                                    reg[r1] = ((reg[r1] >> 1) | signbit);
-                                reg[rd] = reg[r1];
-                                printf("after srai: %d\n",reg[rd]);
-                                break;
-                            }
-                            case srli:
-                            {
-                                printf("srli\n");
-                                reg[rd] = reg[r1] >> (imm & 0x1f);
-                                printf("after srli: %d\n",reg[rd]);
-                                break;
-                            }
-                        }
-                        break;
-                    }
-                    case slti:
-                    {
-                        printf("slti\n");
-                        reg[rd] = (reg[r1] < bit_extend(imm,12) ? 0x00000001 : 0x00000000);
-                        printf("after slti: %d\n",reg[rd]);
-                        break;
-                    }
-                    case sltiu:
-                    {
-                        printf("sltiu\n");
-                        reg[rd] = (reg[r1] < imm ? 0x00000001 : 0x00000000);
-                        printf("after sltiu: %d\n",reg[rd]);
-                        break;
-                    }
-                }
-                break;
-            }
-            case i2_typ:
-            {
-                printf("i2_typ\n");
-                uint8_t funct3 = ((instruction >> 12) & 0x7);
-                uint32_t check = ((instruction >> 7) & 0x1f);
-                uint32_t r1 = ((instruction >> 15) & 0x1f);
-                uint32_t imm = bit_extend(((instruction >> 20) & 0xfff),12);
-                uint32_t rd = check;
-                switch(funct3) {
-                    case lb:
-                    {
-                        printf("lb\n");
-                        reg[rd] = 0;
-                        reg[rd] = memory[reg[r1]+imm];
-                        printf("after lb: %d\n",reg[rd]);
-                        break;
-                    }
-                    case lh:
-                    {
-                        printf("lh\n");
-                        reg[rd] = 0;
-                        reg[rd] |= memory[reg[r1]+imm];
-                        reg[rd] |= (memory[reg[r1]+imm+1] << 8);
-                        printf("after lh: %d\n",reg[rd]);
-                        break;
-                    }
-                    case lw:
-                    {
-                        printf("lw\n");
-                        reg[rd] = 0;
-                        reg[rd] |= memory[reg[r1]+imm];
-                        reg[rd] |= (memory[reg[r1]+imm+1] << 8);
-                        reg[rd] |= (memory[reg[r1]+imm+2] << 16);
-                        reg[rd] |= (memory[reg[r1]+imm+3] << 24);
-                        printf("after lw: %d\n",reg[rd]);
-                        break;
-                    }
-                    case lbu:
-                    {
-                        printf("lbu\n");
-                        reg[rd] = 0;
-                        reg[rd] = memory[reg[r1]+imm];
-                        printf("after lbu: %d\n",reg[rd]);
-                        break;
-                    }
-                    case lhu:
-                    {
-                        printf("lhu\n");
-                        reg[rd] = 0;
-                        reg[rd] |= memory[reg[r1]+imm];
-                        reg[rd] |= (memory[reg[r1]+imm+1] << 8);
-                        printf("after lhu: %d\n",reg[rd]);
-                        break;
-                    }
-                }
-                break;
-            }
-            default:
-            {
-                printf("No Matching Opcode Yet!\n");
-                abort();
-                break;
-            }
-        }
-        count++;
     }
 
     return 0;
