@@ -5,158 +5,92 @@
 #include <unistd.h>
 #include <stdlib.h>
 #include <string.h>
-#define ELF_HEADER 52
-#define PROGRAM_HEADER 32
-#define PT_LOAD 1
-//FUNCTION PROTOTYPES
-int read_image(const char* image_path);
-void read_image_file(FILE * file);
-void handle_interrupt(int signal);
+#include "riscv_32.h"
+int read_objfile(FILE *file);
 uint32_t mem_read(uint32_t address);
-void handle_interrupt(int signal);
-void checkRegister(int reg);
-uint32_t bit_extend(uint32_t val, int bitcnt);
-void read_objfile(FILE *file);
-//ELF Header Structure (52 bytes for a 32-bit System)
-typedef struct {
-    unsigned char e_ident[16]; //Magic Number and ELF ID
-    uint16_t e_type; //object file type
-    uint16_t e_machine; //Architecture
-    uint32_t e_version; //Object file version
-    uint32_t e_entry; //Entry point address
-    uint32_t e_phoff; //Program Header table file offset
-    uint32_t e_shoff; //section header table file offset
-    uint32_t e_flags; //processor-specific flags
-    uint16_t e_ehsize; //ELF header size in bytes (should be 52)
-    uint16_t e_phentsize; //size of one program table entry
-    uint16_t e_phnum; //number of program header entries
-    uint16_t e_shentsize; //sizeof one section header table entry
-    uint16_t e_shnum; //number of section header entries
-    uint16_t e_shstrndx; //section header string table index
-} Elf32_Ehdr;
-// ELF Program Header Structure
-typedef struct {
-    uint32_t p_type;   // Type of segment
-    uint32_t p_offset; // Offset in file
-    uint32_t p_vaddr;  // Virtual address in memory
-    uint32_t p_paddr;  // Physical address (ignored on most systems)
-    uint32_t p_filesz; // Size of segment in file
-    uint32_t p_memsz;  // Size of segment in memory
-    uint32_t p_flags;  // Segment flags (R, W, X)
-    uint32_t p_align;  // Alignment of segment in memory
-} Elf32_Phdr;
-// ELF Section Header Structure
-typedef struct {
-    uint32_t sh_name;       // Name of the section (index into string table)
-    uint32_t sh_type;       // Type of the section
-    uint32_t sh_flags;      // Section attributes
-    uint32_t sh_addr;       // Address in memory
-    uint32_t sh_offset;     // Offset in the file
-    uint32_t sh_size;       // Size of the section
-    uint32_t sh_link;       // Link to another section (usually for symbols)
-    uint32_t sh_info;       // Extra information (depends on section type)
-    uint32_t sh_addralign;  // Section alignment
-    uint32_t sh_entsize;    // Size of each entry (for table sections)
-} Elf32_Shdr;
 Elf32_Shdr *shdr;
 Elf32_Ehdr elfhdr;
 Elf32_Phdr *phdr;
 
 
-// RISC-V is Little-Endian
-// Memory Size for a 32 bit machine
-#define MEMORY_MAX ((uint64_t)1 << 30)
-// we are going down to 1GB. 4GB was a little too big for my laptop.
 uint8_t memory[MEMORY_MAX];
-/*
- * I think I am going to implement the easiest type which I believe is R-type
- * I am a pretty Intermediate Programmer so I do not want to get overwhelmed.
- * If this ends up being a little easier than I thought I will continue on
- * I still need to build my own assembler(practice manipulating strings and parsing)
- *
-*/
-/* Note on Immediates
- * Hard coded numbers will have their sign in the MSB (need to sign-extend to 32)
- *
- */
-// Registers
-/* Need to make sure the pc and x0 is never changed when the assembly is ran through the vm
- *
- * */
-/* I need to setup all my object file to have 64 byte header
- * I need 32 bytes for each program header
- *
- * */
-
-enum 
-{
-    x0 = 0,
-    x1, x2,
-    x3, x4, x5,
-    x6, x7, x8,
-    x9, x10, x11,
-    x12, x13, x14,
-    x15, x16, x17,
-    x18, x19, x20,
-    x21, x22, x23,
-    x24, x25, x26,
-    x27, x28, x29,
-    x30, x31, pc, xCOUNT
-};
-// Register array
 uint32_t reg[xCOUNT];
 
-//opcodes are 7 bits
 enum {
+    ci_css_cr = 0x2,
+    cl_ciw = 0x0,
+    ci_cj_cb_cs = 0x1,
     r_type = 0x33,
     i_type = 0x13,
-    i2_typ = 0x03
+    i2_typ = 0x03,
 };
-//funct3
 enum 
 {
-    arith = 0x0,//needs funct7
+    arith = 0x0,
     xor = 0x4,
     or = 0x6,
     and = 0x7,
     sll = 0x1,
-    sr = 0x5,//needs funct7
-    slt = 0x2,//User determines if the values are signed or not
+    sr = 0x5,
+    slt = 0x2,
     sltu = 0x3,
     addi = 0x0,
     xori = 0x4,
     ori = 0x6,
     andi = 0x7,
     slli = 0x1,
-    sri = 0x5, //needs funct7
+    sri = 0x5, 
     slti = 0x2,
     sltiu = 0x3,
     lb = 0x0,
     lh = 0x1,
     lw = 0x2,
     lbu = 0x4,
-    lhu = 0x5
-};
-enum
-{
+    lhu = 0x5,
     add = 0x00,
     sub = 0x20,
     srl = 0x00,
     sra = 0x20,
     srli = 0x00,
-    srai = 0x20
+    srai = 0x20,
+    clwsp = 0x2,
+    cswsp = 0x6,
+    clw = 0x2,
+    csw = 0x6,
+    cj = 0x5,
+    cjal = 0x1,
+    cjr = 0x8, 
+    cjalr = 0x9,
+    cbeqz = 0x6,
+    cbnez = 0x7,
+    cli = 0x2,
+    clui = 0x3,
+    caddi = 0x0,
+    caddi16sp = 0x3,
+    caddi4spn = 0x0,
+    cmv = 0x8,
+    cadd = 0x9,
+    cnop = 0x0,
+    cebreak = 0x9,
+    cslli = 0x0,
+    cb_cs = 0x4,
+    csrai = 0x0,
+    csrli = 0x1,
+    candi = 0x2,
+    cand = 0x8f,
+    cor =  0x8e,
+    cxor = 0x8d,
+    csub = 0x8c
 };
-
-
-
-
 int main(int argc, char* argv[]) {
     if (argc < 2) {
         printf("No Image!\n");
         exit(2);
     }
     for (int j = 1; j != argc; j++) {
-        read_objfile(fopen(argv[j],"rb"));
+        if (!read_objfile(fopen(argv[j],"rb"))) {
+            printf("Failed to load Image\n");
+        }
         
         // if (!read_image(argv[j])) {
         //     printf("Failed to load Image!\n");
@@ -178,9 +112,188 @@ int main(int argc, char* argv[]) {
         count++;
         if (compressed != 0x3) {
             printf("compressed!\n");
-            reg[pc] += 2;
+            reg[pc] += 2;//only loaded in a 2 bytes
             switch (compressed) {
-                ;;
+                case ci_css_cr:
+                {
+                    printf("ci_css_cr\n");
+                    uint8_t funct3 = ((instruction >> 13) & 0x7);
+                    uint8_t funct4 = ((instruction >> 12) & 0xf);
+                    uint8_t ci_rd = ((instruction >> 7) & 0x1f);
+                    switch(funct3) {
+                        case clwsp:
+                        {
+                            printf("clwsp\n");
+                            uint32_t ci_imm = (((instruction >> 2) & 0x3) << 6) | (((instruction >> 4) & 0x7) << 2) | (((instruction >> 12) & 0x1) << 5);
+                            reg[ci_rd] = 0;
+                            reg[ci_rd] |= memory[(reg[x2]+(4*ci_imm))];
+                            reg[ci_rd] |= (memory[(reg[x2]+(4*ci_imm))+1] << 8);
+                            reg[ci_rd] |= (memory[(reg[x2]+(4*ci_imm))+2] << 16);
+                            reg[ci_rd] |= (memory[(reg[x2]+(4*ci_imm))+3] << 24);
+                            break;
+                        }
+                        case cslli:
+                        {
+                            printf("cslli\n");
+                            uint32_t ci_imm = ((((instruction >> 2) & 0x1f) | (((instruction >> 12) & 0x1) << 5)));
+                            reg[ci_rd] = reg[ci_rd] << ci_imm;
+                            break;
+                        }
+                        case cswsp:
+                        {
+                            printf("cswsp\n");
+                            uint32_t ci_imm = ((((instruction >> 2) & 0x1f) | (((instruction >> 12) & 0x1) << 5)));
+                            uint8_t rs2 = ((instruction >> 2) & 0x1f);
+                            memory[(4*ci_imm)+reg[x2]] = (reg[rs2] & 0xff);
+                            memory[(4*ci_imm)+reg[x2]+1] = ((reg[rs2] >> 8) & 0xff);
+                            memory[(4*ci_imm)+reg[x2]+2] = ((reg[rs2] >> 16) & 0xff);
+                            memory[(4*ci_imm)+reg[x2]+3] = ((reg[rs2] >> 24) & 0xff);
+                            break;
+                        }
+                        default:
+                        {
+                            break;
+                        }
+                    }
+                    switch(funct4) {
+                        case cjr:// check if register is the null register (zero)
+                        {
+                            printf("cjr, cmv\n");
+                            break;
+                        }
+                        case cjalr: // adding and ebreak
+                        {
+                            printf("cjalr, cadd, cebreak\n");
+                            break;
+                        }
+                        default:
+                        {
+                            break;
+                        }
+                    }
+                    break;
+                }
+                case cl_ciw:
+                {
+                    printf("cl_ciw\n");
+                    uint8_t funct3 = ((instruction >> 13) & 0x7);
+                    switch(funct3) {
+                        case caddi4spn:
+                        {
+                            printf("caddi4spn");
+                            break;
+                        }
+                        case clw:
+                        {
+                            printf("clw\n");
+                            break;
+                        }
+                        default:
+                        {
+                            break;
+                        }
+                    }
+                    break;
+                }
+                case ci_cj_cb_cs:
+                {
+                    printf("ci_cj_cb\n");
+                    uint8_t funct3 = ((instruction >> 13) & 0x7);
+                    switch(funct3) {
+                        case cli:
+                        {
+                            printf("cli");
+                            break;
+                        }
+                        case clui://caddi16sp has the same label
+                        {
+                            printf("clui, caddi16sp\n");
+                            break;
+                        }
+                        case caddi://cnop has the same label
+                        {
+                            printf("caddi, cnop\n");
+                            break;
+                        }
+                        case cj:
+                        {
+                            printf("cj\n");
+                            break;
+                        }
+                        case cjal:
+                        {
+                            printf("cjal\n");
+                            break;
+                        }
+                        case cbeqz:
+                        {
+                            printf("cbeqz\n");
+                            break;
+                        }
+                        case cbnez:
+                        {
+                            printf("cbnez\n");
+                            break;
+                        }
+                        case cb_cs: // 0x4
+                        {
+                            printf("cb_cs\n");
+                            uint8_t shift2 = ((instruction >> 10) & 0x3);
+                            uint8_t alu8 = (((instruction >> 10) & 0x7) << 5) | ((instruction >> 5) & 0x3);
+                            switch(shift2) {
+                                case csrai:
+                                {
+                                    printf("csrai\n");
+                                    break;
+                                }
+                                case csrli:
+                                {
+                                    printf("csrli\n");
+                                    break;
+                                }
+                                case candi:
+                                {
+                                    printf("candi\n");
+                                    break;
+                                }
+                                default:
+                                {
+                                    break;
+                                }
+                            }
+                            switch(alu8) {
+                                case cand:
+                                {
+                                    printf("cand\n");
+                                    break;
+                                }
+                                case cor:
+                                {
+                                    printf("cor\n");
+                                    break;
+                                }
+                                case cxor:
+                                {
+                                    printf("cxor\n");
+                                    break;
+                                }
+                                case csub:
+                                {
+                                    printf("csub\n");
+                                    break;
+                                }
+                                default:
+                                {
+                                    break;
+                                }
+                            }
+                            break;
+                        }
+                    }   
+                    break;
+                }
+                default:
+                    break;
             }
             continue;
         }
@@ -459,67 +572,12 @@ int main(int argc, char* argv[]) {
 
     return 0;
 }
-void handle_interrupt(int signal) {
-    printf("Exiting...\n");
-    exit(2);
-}
-void read_image_file(FILE * file) {
-    uint32_t origin;// where to place instructions in memory
-    fread(&origin,sizeof(uint32_t),1,file);//read it in
-    printf("%x\n",origin);
-    uint32_t max_read = MEMORY_MAX - origin;
-    uint8_t *p = memory + origin;
-    size_t bytes = fread(p,sizeof(uint8_t),max_read,file);
-    printf("bytes: %zu\n",bytes);
-}
-int read_image(const char* image_path) {
-    FILE *file = fopen(image_path, "rb");
-    if (!file) {return 0;}
-    read_image_file(file);
-    fclose(file);
-    return 1;
-}
-//I am storing big-endian in memory I need to flip this here.
-uint32_t mem_read(uint32_t address) {
-    uint32_t instruction = ((memory[address++] & 0xff));
-    instruction |= ((memory[address++] & 0xff) << 8);
-    if ((instruction & 0x3) != 3) {
-        printf("All Compressed!\n");
-        return instruction;
-    }
-    instruction |= ((memory[address++] & 0xff) << 16);
-    instruction |= ((memory[address] & 0xff) << 24);
-    return instruction;
-}
-// Makes sure user is not. Do not want user to mutate null register and pc.
-void checkRegister(int reg) {
-    if (reg == 0) {
-        abort();
-    } else if (reg == 32) {
-        abort();
-    }
-}
 
-uint32_t bit_extend(uint32_t val, int bitcnt) {
-    uint32_t sign = (val >> (bitcnt - 1));
-    uint32_t dummy = 0;
-    for (int i = 0; i != bitcnt - 1; ++i) {
-        dummy |= (1 << i);
-    }
-    uint32_t rval;
-    if (sign) {
-        rval = ~((~val + 1) & dummy)+1;
-    } else {
-        rval = val;
-    }
-    return rval;
-}
-
-void read_objfile(FILE *file) {
-    /* In C structs are just heterogenous data structures, its just bytes but the data types do not need to be the same.
-     * I complete forgot about that.
-     * */
+int read_objfile(FILE *file) {
     size_t bytes = fread(&elfhdr,sizeof(elfhdr),1,file);
+    if (bytes == 0) {
+        return 0;
+    }
     printf("0x%x\n",elfhdr.e_entry);
     phdr = malloc(sizeof(Elf32_Phdr)*elfhdr.e_phnum);
     if (phdr == NULL) {
@@ -549,4 +607,17 @@ void read_objfile(FILE *file) {
         fseek(file,shdr[i].sh_offset, SEEK_SET);
         bytes = fread(memory + (shdr[i].sh_addr), shdr[i].sh_size, 1, file);
     }
+    return 1;
+}
+
+uint32_t mem_read(uint32_t address) {
+    uint32_t instruction = ((memory[address++] & 0xff));
+    instruction |= ((memory[address++] & 0xff) << 8);
+    if ((instruction & 0x3) != 3) {
+        printf("All Compressed!\n");
+        return instruction;
+    }
+    instruction |= ((memory[address++] & 0xff) << 16);
+    instruction |= ((memory[address] & 0xff) << 24);
+    return instruction;
 }
