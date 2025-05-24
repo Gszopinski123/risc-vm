@@ -20,7 +20,10 @@ enum {
     r_type = 0x33,
     i_type = 0x13,
     i2_typ = 0x03,
-    s_type = 0x23
+    s_type = 0x23,
+    u_type = 0x37,
+    u2_typ = 0x17,
+    i3_typ = 0x73
 };
 enum 
 {
@@ -99,6 +102,9 @@ int main(int argc, char* argv[]) {
     printf("Entry: 0x%x\n",elfhdr.e_entry);
     int running = 1;
     int count = 0;
+    for (int i = 0; i != 100; i++) {
+        printf("0x%x\n",memory[0x110a4+i]);
+    }
     while (running) {
         uint32_t instruction = mem_read(reg[pc]);
         uint8_t opcode = (instruction & 0x7F);
@@ -115,7 +121,7 @@ int main(int argc, char* argv[]) {
                     printf("ci_css_cr\n");
                     uint8_t funct3 = ((instruction >> 13) & 0x7);
                     uint8_t funct4 = ((instruction >> 12) & 0xf);
-                    uint8_t ci_rd = ((instruction >> 7) & 0x1f);
+                    uint8_t ci_rd = ((instruction >> 7) & 0x1f) + 8;
                     switch(funct3) {
                         case clwsp:
                         {
@@ -139,7 +145,7 @@ int main(int argc, char* argv[]) {
                         {
                             printf("cswsp\n");
                             uint32_t ci_imm = ((((instruction >> 2) & 0x1f) | (((instruction >> 12) & 0x1) << 5)));
-                            uint8_t rs2 = ((instruction >> 2) & 0x1f);
+                            uint8_t rs2 = ((instruction >> 2) & 0x1f) + 8;
                             memory[(4*ci_imm)+reg[x2]] = (reg[rs2] & 0xff);
                             memory[(4*ci_imm)+reg[x2]+1] = ((reg[rs2] >> 8) & 0xff);
                             memory[(4*ci_imm)+reg[x2]+2] = ((reg[rs2] >> 16) & 0xff);
@@ -154,22 +160,23 @@ int main(int argc, char* argv[]) {
                     switch(funct4) {
                         case cjr:// check if register is the null register (zero)
                         {
-                            uint8_t rs1 = ((instruction >> 7) & 0x1f);
-                            uint8_t rs2 = ((instruction >> 2) & 0x1f);
+                            uint8_t rs1 = ((instruction >> 7) & 0x1f) + 8;
+                            uint8_t rs2 = ((instruction >> 2) & 0x1f) + 8;
                             if (rs2 == 0) {//cjr
                                 printf("cjr\n");
                                 reg[pc] = reg[rs1];
                             } else {// cmv
                                 printf("cmv\n");
                                 reg[rs1] = reg[rs2];// Implicit + 0 at the end
+                                printf("%d\n",reg[rs2]);
                             }
                             break;
                         }
                         case cjalr: // adding and ebreak
                         {
                             printf("cjalr, cadd, cebreak\n");
-                            uint8_t rs1_rd = ((instruction >> 7) & 0x1f);
-                            uint8_t rs2 = ((instruction >> 2) & 0x1f);
+                            uint8_t rs1_rd = ((instruction >> 7) & 0x1f) + 8;
+                            uint8_t rs2 = ((instruction >> 2) & 0x1f) + 8;
                             if (rs2 == 0 && rs1_rd == 0) {//Ecall
                                 printf("cecall\n");
                                 // RAISE TRAPS but for now we will just end the program
@@ -200,23 +207,26 @@ int main(int argc, char* argv[]) {
                         {
                             printf("caddi4spn");
                             uint32_t imm = (((instruction >> 5) & 0x1) << 3) | (((instruction >> 6) & 0x1) << 2) | 
-                                           (((instruction >> 7) & 0xf) << 6) | (((instruction >> 11) & 0x3) << 4);
-                            uint8_t rd = ((instruction >> 2) & 0x7);
+                            (((instruction >> 7) & 0xf) << 6) | (((instruction >> 11) & 0x3) << 4);
+                            uint8_t rd = ((instruction >> 2) & 0x7) + 8;
                             reg[rd] = x2 + (imm * 4);
                             break;
                         }
                         case clw:
                         {
                             printf("clw\n");
-                            uint8_t rd = ((instruction >> 2) & 0x7);
-                            uint8_t rs1 = ((instruction >> 7) & 0x7);
-                            uint32_t imm = (((instruction >> 5) & 0x1) << 6) | (((instruction >> 6) & 0x1) << 2) | (((instruction >> 10) & 0x7) << 3);
+                            uint8_t rd = ((instruction >> 2) & 0x7) + 8;
+                            printf("reg[rd]: 0x%x\n",reg[rd]);
+                            uint8_t rs1 = ((instruction >> 7) & 0x7) + 8;
+                            printf("reg[rs1]: 0x%x\n",reg[rs1]);
+                            uint32_t imm = (((instruction >> 5) & 0x1) << 5) | (((instruction >> 6) & 0x1) << 2) | (((instruction >> 10) & 0x7) << 3);
+                            printf("imm: 0x%x\n",imm);
                             reg[rd] = 0;
-                            reg[rd] |= memory[((4*imm) + reg[rs1])];
-                            reg[rd] |= (memory[((4*imm) + reg[rs1])+1] << 8);
-                            reg[rd] |= (memory[((4*imm) + reg[rs1])+2] << 16);
-                            reg[rd] |= (memory[((4*imm) + reg[rs1])+3] << 24);
-                            printf("%d\n",reg[rd]);
+                            reg[rd] |= memory[((imm) + reg[rs1])];
+                            reg[rd] |= (memory[((imm) + reg[rs1])+1] << 8);
+                            reg[rd] |= (memory[((imm) + reg[rs1])+2] << 16);
+                            reg[rd] |= (memory[((imm) + reg[rs1])+3] << 24);
+                            printf("after clw: 0x%x\n",reg[rd]);
                             break;
                         }
                         default:
@@ -234,11 +244,27 @@ int main(int argc, char* argv[]) {
                         case cli:
                         {
                             printf("cli");
+                            uint8_t rd = ((instruction >> 7) & 0x1f) + 8;
+                            uint32_t imm = ((instruction >> 2) & 0x1f) | (((instruction >> 12) & 0x1) << 5);
+                            reg[rd] = bit_extend(imm,6);
+                            printf("reg[rd]: 0x%x\n",reg[rd]);
                             break;
                         }
                         case clui://caddi16sp has the same label
                         {
                             printf("clui, caddi16sp\n");
+                            uint8_t rd = ((instruction >> 7) & 0x1f);
+                            if (rd == 2) {
+                                uint32_t imm = bit_extend((((instruction >> 2) & 0x1) << 5) |
+                                               (((instruction >> 3) & 0x3) << 7) |
+                                               (((instruction >> 5) & 0x1) << 6) |
+                                               (((instruction >> 6) & 0x1) << 4) |
+                                               (((instruction >> 12) & 0x1) << 9),7);
+                                reg[rd] = reg[rd] + 4*imm;
+                            } else {
+                                uint32_t imm = ((((instruction >> 2) & 0x1f) | (((instruction >> 12) & 0x1) << 5)) << 12);
+                                reg[rd+8] = bit_extend(imm,6);
+                            }
                             break;
                         }
                         case caddi://cnop has the same label
@@ -459,7 +485,7 @@ int main(int argc, char* argv[]) {
                         {
                             printf("addi\n");
                             reg[rd] = reg[r1] + imm;
-                            printf("after addi: %d\n",reg[rd]);
+                            printf("after addi: 0x%x\n",reg[rd]);
                             break;
                         }
                         case xori:
@@ -567,7 +593,7 @@ int main(int argc, char* argv[]) {
                             reg[rd] |= (memory[reg[r1]+imm+1] << 8);
                             reg[rd] |= (memory[reg[r1]+imm+2] << 16);
                             reg[rd] |= (memory[reg[r1]+imm+3] << 24);
-                            printf("after lw: %d\n",reg[rd]);
+                            printf("after lw: 0x%x\n",reg[rd]);
                             break;
                         }
                         case lbu:
@@ -626,13 +652,44 @@ int main(int argc, char* argv[]) {
                     }
                     break;
                 }
+                case u_type:
+                {
+                    printf("u_type\n");
+                    printf("lui\n");
+                    uint8_t rd = ((instruction >> 7) & 0x1f);
+                    uint32_t imm = (((instruction >> 12) & 0xfffff) << 12);
+                    reg[rd] = imm;
+                    break;
+                }
+                case u2_typ:
+                {
+                    printf("u_typ2\n");
+                    printf("auipc\n");
+                    uint8_t rd = ((instruction >> 7) & 0x1f);
+                    uint32_t imm = (((instruction >> 12) & 0xfffff) << 12);
+                    printf("imm: 0x%x\n",imm);
+                    reg[rd] = reg[pc] + imm;
+                    printf("reg[rd]: 0x%x\n",reg[rd]);
+                    break;
+                }
+                case i3_typ:
+                {
+                    uint32_t imm = ((instruction >> 20) & 0x1);
+                    if (imm == 1) {//ebreak
+                        //raise debugger
+                    } else {//ecall
+                        //raise TRAPS here
+                        running = 0;
+                    }
+                    break;
+                }
                 default:
                 {
                     printf("No Matching Opcode Yet!\n");
                     abort();
                     break;
                 }
-                   
+                  
             }
             reg[pc] += 4;
             count++;
