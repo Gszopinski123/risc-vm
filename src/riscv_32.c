@@ -102,9 +102,6 @@ int main(int argc, char* argv[]) {
     printf("Entry: 0x%x\n",elfhdr.e_entry);
     int running = 1;
     int count = 0;
-    for (int i = 0; i != 100; i++) {
-        printf("0x%x\n",memory[0x110a4+i]);
-    }
     while (running) {
         uint32_t instruction = mem_read(reg[pc]);
         uint8_t opcode = (instruction & 0x7F);
@@ -114,7 +111,6 @@ int main(int argc, char* argv[]) {
         // printf("count: %d\n",count);
         if (compressed != 0x3) {
             printf("compressed!\n");
-            
             switch (compressed) {
                 case ci_css_cr:
                 {
@@ -160,8 +156,8 @@ int main(int argc, char* argv[]) {
                     switch(funct4) {
                         case cjr:// check if register is the null register (zero)
                         {
-                            uint8_t rs1 = ((instruction >> 7) & 0x1f) + 8;
-                            uint8_t rs2 = ((instruction >> 2) & 0x1f) + 8;
+                            uint8_t rs1 = ((instruction >> 7) & 0x1f);
+                            uint8_t rs2 = ((instruction >> 2) & 0x1f);
                             if (rs2 == 0) {//cjr
                                 printf("cjr\n");
                                 reg[pc] = reg[rs1];
@@ -243,8 +239,8 @@ int main(int argc, char* argv[]) {
                     switch(funct3) {
                         case cli:
                         {
-                            printf("cli");
-                            uint8_t rd = ((instruction >> 7) & 0x1f) + 8;
+                            printf("cli\n");
+                            uint8_t rd = ((instruction >> 7) & 0x1f);
                             uint32_t imm = ((instruction >> 2) & 0x1f) | (((instruction >> 12) & 0x1) << 5);
                             reg[rd] = bit_extend(imm,6);
                             printf("reg[rd]: 0x%x\n",reg[rd]);
@@ -263,33 +259,79 @@ int main(int argc, char* argv[]) {
                                 reg[rd] = reg[rd] + 4*imm;
                             } else {
                                 uint32_t imm = ((((instruction >> 2) & 0x1f) | (((instruction >> 12) & 0x1) << 5)) << 12);
-                                reg[rd+8] = bit_extend(imm,6);
+                                reg[rd] = bit_extend(imm,6);
                             }
                             break;
                         }
-                        case caddi://cnop has the same label
+                        case caddi:// cnop has the same label
                         {
                             printf("caddi, cnop\n");
+                            uint8_t rd = ((instruction >> 7) & 0x1f);
+                            if (rd == 0) {
+                                printf("cnop\n");
+                            } else {
+                                printf("caddi\n");
+                                uint32_t imm = bit_extend(((instruction >> 2) & 0x1f) | (((instruction >> 12) & 0x1) << 5),7);
+                                reg[rd] = imm;
+                                printf("reg[rd] = 0x%x\n",reg[rd]);
+                            }
                             break;
                         }
                         case cj:
                         {
                             printf("cj\n");
+                            uint32_t offset = bit_extend(((((instruction >> 2) & 0x1) << 5) |
+                                              (((instruction >> 3) & 0x7) << 1)  |
+                                              (((instruction >> 6) & 0x1) << 7)  |
+                                              (((instruction >> 7) & 0x1) << 6)  |
+                                              (((instruction >> 8) & 0x1) << 10) |
+                                              (((instruction >> 9) & 0x3) << 8)  |
+                                              (((instruction >> 11) & 0x1) << 4) |
+                                              (((instruction >> 12) & 0x1)) << 11), 11);
+                            reg[pc] = reg[pc] + offset;
                             break;
                         }
                         case cjal:
                         {
                             printf("cjal\n");
+                            uint32_t offset = bit_extend(((((instruction >> 2) & 0x1) << 5) |
+                                              (((instruction >> 3) & 0x7) << 1)  |
+                                              (((instruction >> 6) & 0x1) << 7)  |
+                                              (((instruction >> 7) & 0x1) << 6)  |
+                                              (((instruction >> 8) & 0x1) << 10) |
+                                              (((instruction >> 9) & 0x3) << 8)  |
+                                              (((instruction >> 11) & 0x1) << 4) |
+                                              (((instruction >> 12) & 0x1)) << 11), 11);
+                            reg[x1] = reg[pc] + 2;
+                            reg[pc] = reg[pc] + offset;
                             break;
                         }
                         case cbeqz:
                         {
                             printf("cbeqz\n");
+                            uint32_t rs1 = ((instruction >> 7) & 0x3) + 8;
+                            uint32_t imm = bit_extend((((instruction >> 2) & 0x1) << 5)  | 
+                                           (((instruction >> 3) & 0x3) << 1)  |
+                                           (((instruction >> 5) & 0x3) << 6)  |
+                                           (((instruction >> 10) & 0x3) << 3) |
+                                           (((instruction >> 12) & 0x1) << 8),8);
+                            if (!reg[rs1]) {
+                                reg[pc] = reg[pc] + imm;
+                            }
                             break;
                         }
                         case cbnez:
                         {
                             printf("cbnez\n");
+                            uint32_t rs1 = ((instruction >> 7) & 0x3) + 8;
+                            uint32_t imm = bit_extend((((instruction >> 2) & 0x1) << 5)  | 
+                                           (((instruction >> 3) & 0x3) << 1)  |
+                                           (((instruction >> 5) & 0x3) << 6)  |
+                                           (((instruction >> 10) & 0x3) << 3) |
+                                           (((instruction >> 12) & 0x1) << 8),8);
+                            if (reg[rs1]) {
+                                reg[pc] = reg[pc] + imm;
+                            }
                             break;
                         }
                         case cb_cs: // 0x4
@@ -639,10 +681,16 @@ int main(int argc, char* argv[]) {
                         }
                         case sw:
                         {
+                            printf("sw\n");
+                            printf("reg[rs1]: 0x%x reg[rs2]: 0x%x\n",reg[rs1],reg[rs2]);
                             memory[reg[rs1] + imm] = (reg[rs2] & 0xff);
                             memory[reg[rs1] + imm + 1] = ((reg[rs2] >> 8) & 0xff);
                             memory[reg[rs1] + imm + 2] = ((reg[rs2] >> 16) & 0xff);
                             memory[reg[rs1] + imm + 3] = ((reg[rs2] >> 24) & 0xff);
+                            printf("memory: 0x%x%x%x%x\n",memory[reg[rs1] + imm],
+                                                          memory[reg[rs1] + imm+1],
+                                                          memory[reg[rs1] + imm+2],
+                                                          memory[reg[rs1] + imm+3]);
                             break;
                         }
                         default:
@@ -659,6 +707,7 @@ int main(int argc, char* argv[]) {
                     uint8_t rd = ((instruction >> 7) & 0x1f);
                     uint32_t imm = (((instruction >> 12) & 0xfffff) << 12);
                     reg[rd] = imm;
+                    printf("reg[rd]: 0x%x\n",reg[rd]);
                     break;
                 }
                 case u2_typ:
