@@ -1,11 +1,5 @@
-#include <stdint.h>
-#include <stdio.h>
-#include <signal.h>
-#include <stdlib.h>
-#include <unistd.h>
-#include <stdlib.h>
-#include <string.h>
 #include "riscv_32.h"
+
 int read_objfile(FILE *file);
 uint32_t mem_read(uint32_t address);
 Elf32_Shdr *shdr;
@@ -101,7 +95,6 @@ int main(int argc, char* argv[]) {
     reg[pc] = elfhdr.e_entry;
     printf("Entry: 0x%x\n",elfhdr.e_entry);
     int running = 1;
-    int count = 0;
     while (running) {
         uint32_t instruction = mem_read(reg[pc]);
         uint8_t opcode = (instruction & 0x7F);
@@ -554,7 +547,6 @@ int main(int argc, char* argv[]) {
                         case slli:
                         {
                             printf("slli\n");
-                            uint32_t funct7 = imm & 0x3f00;
                             reg[rd] = reg[r1] << (imm & 0x1f);
                             printf("after slli: %d\n",reg[rd]);
                             break;
@@ -741,7 +733,6 @@ int main(int argc, char* argv[]) {
                   
             }
             reg[pc] += 4;
-            count++;
         }
     }
 

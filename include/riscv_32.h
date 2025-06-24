@@ -1,4 +1,15 @@
+#ifndef RISCV_32_H
+#define RISCV_32_H
+
 #include <stdint.h>
+#include <stdio.h>
+#include <signal.h>
+#include <stdlib.h>
+#include <unistd.h>
+#include <stdlib.h>
+#include <string.h>
+#include <stdint.h>
+
 #define MEMORY_MAX ((uint64_t)1 << 30)
 #define ELF_HEADER 52
 #define PROGRAM_HEADER 32
@@ -93,3 +104,5 @@ enum
     x27, x28, x29,
     x30, x31, pc, xCOUNT
 };
+
+#endif
