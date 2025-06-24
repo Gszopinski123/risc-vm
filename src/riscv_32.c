@@ -1,12 +1,13 @@
+
 #include "riscv_32.h"
 
-int read_objfile(FILE *file);
-uint32_t mem_read(uint32_t address);
+
 Elf32_Shdr *shdr;
 Elf32_Ehdr elfhdr;
 Elf32_Phdr *phdr;
 uint8_t memory[MEMORY_MAX];
 uint32_t reg[xCOUNT];
+
 enum {
     ci_css_cr = 0x2,
     cl_ciw = 0x0,
@@ -331,21 +332,41 @@ int main(int argc, char* argv[]) {
                         {
                             printf("cb_cs\n");
                             uint8_t shift2 = ((instruction >> 10) & 0x3);
-                            uint8_t alu8 = (((instruction >> 10) & 0x7) << 5) | ((instruction >> 5) & 0x3);
+                            uint8_t alu8 = (((instruction >> 10) & 0x3f) << 2) | ((instruction >> 5) & 0x3);
                             switch(shift2) {
                                 case csrai:
                                 {
                                     printf("csrai\n");
+                                    uint8_t rd = 8 + ((instruction >> 7) & 0x3);
+                                    uint32_t signbit = reg[rd] & 0x80000000;
+                                    
+                                    uint32_t imm = bit_extend((((instruction >> 12) & 0x1) << 5)
+                                                                | ((instruction >> 2) & 0x1f),6);
+                                    reg[rd] = (reg[rd] >> imm) | signbit;
+                                    printf("after csrai: 0x%x\n",reg[rd]);
                                     break;
                                 }
                                 case csrli:
                                 {
                                     printf("csrli\n");
+                                    uint8_t rd = 8 + ((instruction >> 7) & 0x3);
+                                    
+                                    uint32_t imm = bit_extend((((instruction >> 12) & 0x1) << 5)
+                                                                | ((instruction >> 2) & 0x1f),6);
+                                    reg[rd] = (reg[rd] >> imm);
+                                    printf("after csrli: 0x%x\n",reg[rd]);
                                     break;
                                 }
                                 case candi:
                                 {
+                                    
                                     printf("candi\n");
+                                    uint8_t rd = 8 + ((instruction >> 7) & 0x3);
+                                    
+                                    uint32_t imm = bit_extend((((instruction >> 12) & 0x1) << 5)
+                                                                | ((instruction >> 2) & 0x1f),6);
+                                    reg[rd] = (reg[rd] & imm);
+                                    printf("after candi: 0x%x\n",reg[rd]);
                                     break;
                                 }
                                 default:
@@ -357,21 +378,37 @@ int main(int argc, char* argv[]) {
                                 case cand:
                                 {
                                     printf("cand\n");
+                                    uint8_t rd  = 8 + ((instruction & 0x3 >> 7));
+                                    uint8_t rs2 = 8 + ((instruction & 0x3) >> 2);
+                                    reg[rd] = reg[rd] & reg[rs2];
+                                    printf("after cand: 0x%x\n",reg[rd]);
                                     break;
                                 }
                                 case cor:
                                 {
                                     printf("cor\n");
+                                    uint8_t rd  = 8 + ((instruction & 0x3 >> 7));
+                                    uint8_t rs2 = 8 + ((instruction & 0x3) >> 2);
+                                    reg[rd] = reg[rd] | reg[rs2];
+                                    printf("after cor: 0x%x\n",reg[rd]);
                                     break;
                                 }
                                 case cxor:
                                 {
                                     printf("cxor\n");
+                                    uint8_t rd  = 8 + ((instruction & 0x3 >> 7));
+                                    uint8_t rs2 = 8 + ((instruction & 0x3) >> 2);
+                                    reg[rd] = reg[rd] ^ reg[rs2];
+                                    printf("after cxor: 0x%x\n",reg[rd]);
                                     break;
                                 }
                                 case csub:
                                 {
                                     printf("csub\n");
+                                    uint8_t rd  = 8 + ((instruction & 0x3 >> 7));
+                                    uint8_t rs2 = 8 + ((instruction & 0x3) >> 2);
+                                    reg[rd] = reg[rd] - reg[rs2];
+                                    printf("after csub: 0x%x\n",reg[rd]);
                                     break;
                                 }
                                 default:
@@ -786,4 +823,32 @@ uint32_t mem_read(uint32_t address) {
     instruction |= ((memory[address++] & 0xff) << 16);
     instruction |= ((memory[address] & 0xff) << 24);
     return instruction;
+}
+void handle_interrupt(int signal) {
+    printf("Exiting...\n");
+    exit(2);
+}
+
+// Makes sure user is not. Do not want user to mutate null register and pc.
+void checkRegister(int reg) {
+    if (reg == 0) {
+        abort();
+    } else if (reg == 32) {
+        abort();
+    }
+}
+
+uint32_t bit_extend(uint32_t val, int bitcnt) {
+    uint32_t sign = (val >> (bitcnt - 1));
+    uint32_t dummy = 0;
+    for (int i = 0; i != bitcnt - 1; ++i) {
+        dummy |= (1 << i);
+    }
+    uint32_t rval;
+    if (sign) {
+        rval = ~((~val + 1) & dummy)+1;
+    } else {
+        rval = val;
+    }
+    return rval;
 }

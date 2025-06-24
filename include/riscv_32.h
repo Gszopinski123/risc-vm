@@ -55,39 +55,14 @@ typedef struct {
     uint32_t sh_entsize;    // Size of each entry (for table sections)
 } Elf32_Shdr;
 
+//function prototypes
 void handle_interrupt(int signal);
 void checkRegister(int reg);
 uint32_t bit_extend(uint32_t val, int bitcnt);
+int read_objfile(FILE *file);
+uint32_t mem_read(uint32_t address);
 
 
-void handle_interrupt(int signal) {
-    printf("Exiting...\n");
-    exit(2);
-}
-
-// Makes sure user is not. Do not want user to mutate null register and pc.
-void checkRegister(int reg) {
-    if (reg == 0) {
-        abort();
-    } else if (reg == 32) {
-        abort();
-    }
-}
-
-uint32_t bit_extend(uint32_t val, int bitcnt) {
-    uint32_t sign = (val >> (bitcnt - 1));
-    uint32_t dummy = 0;
-    for (int i = 0; i != bitcnt - 1; ++i) {
-        dummy |= (1 << i);
-    }
-    uint32_t rval;
-    if (sign) {
-        rval = ~((~val + 1) & dummy)+1;
-    } else {
-        rval = val;
-    }
-    return rval;
-}
 // Registers
 enum 
 {

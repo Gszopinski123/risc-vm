@@ -2,16 +2,16 @@
 triple:          'arm64-apple-darwin'
 binary-path:     'build/bin/riscv_32-vm'
 relocations:
-  - { offset: 0x26, size: 0x8, addend: 0x0, symName: _handle_interrupt, symObjAddr: 0x0, symBinAddr: 0x1000010C8, symSize: 0x24 }
+  - { offset: 0x26, size: 0x8, addend: 0x0, symName: _main, symObjAddr: 0x0, symBinAddr: 0x100000CEC, symSize: 0x26AC }
   - { offset: 0x4D, size: 0x8, addend: 0x0, symName: _shdr, symBinAddr: 0x1400080C8, symSize: 0x0 }
   - { offset: 0x101, size: 0x8, addend: 0x0, symName: _elfhdr, symBinAddr: 0x100008000, symSize: 0x0 }
   - { offset: 0x1F3, size: 0x8, addend: 0x0, symName: _phdr, symBinAddr: 0x140008038, symSize: 0x0 }
   - { offset: 0x27D, size: 0x8, addend: 0x0, symName: _memory, symBinAddr: 0x100008034, symSize: 0x0 }
   - { offset: 0x2AC, size: 0x8, addend: 0x0, symName: _reg, symBinAddr: 0x140008040, symSize: 0x0 }
-  - { offset: 0x2C2, size: 0x8, addend: 0x0, symName: _handle_interrupt, symObjAddr: 0x0, symBinAddr: 0x1000010C8, symSize: 0x24 }
-  - { offset: 0x2E6, size: 0x8, addend: 0x0, symName: _checkRegister, symObjAddr: 0x24, symBinAddr: 0x1000010EC, symSize: 0x50 }
-  - { offset: 0x30A, size: 0x8, addend: 0x0, symName: _bit_extend, symObjAddr: 0x74, symBinAddr: 0x10000113C, symSize: 0xC4 }
-  - { offset: 0x386, size: 0x8, addend: 0x0, symName: _main, symObjAddr: 0x138, symBinAddr: 0x100001200, symSize: 0x2350 }
-  - { offset: 0x9EB, size: 0x8, addend: 0x0, symName: _read_objfile, symObjAddr: 0x2510, symBinAddr: 0x1000035D8, symSize: 0x3AC }
-  - { offset: 0xA5E, size: 0x8, addend: 0x0, symName: _mem_read, symObjAddr: 0x28BC, symBinAddr: 0x100003984, symSize: 0xE0 }
+  - { offset: 0x2C2, size: 0x8, addend: 0x0, symName: _main, symObjAddr: 0x0, symBinAddr: 0x100000CEC, symSize: 0x26AC }
+  - { offset: 0xA79, size: 0x8, addend: 0x0, symName: _read_objfile, symObjAddr: 0x2734, symBinAddr: 0x100003420, symSize: 0x3AC }
+  - { offset: 0xAEC, size: 0x8, addend: 0x0, symName: _handle_interrupt, symObjAddr: 0x2AE0, symBinAddr: 0x1000037CC, symSize: 0x24 }
+  - { offset: 0xB12, size: 0x8, addend: 0x0, symName: _mem_read, symObjAddr: 0x2B04, symBinAddr: 0x1000037F0, symSize: 0xE0 }
+  - { offset: 0xB4B, size: 0x8, addend: 0x0, symName: _bit_extend, symObjAddr: 0x2BE4, symBinAddr: 0x1000038D0, symSize: 0xC4 }
+  - { offset: 0xBCE, size: 0x8, addend: 0x0, symName: _checkRegister, symObjAddr: 0x2CA8, symBinAddr: 0x100003994, symSize: 0x50 }
 ...
