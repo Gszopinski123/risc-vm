@@ -2,6 +2,11 @@
 My Implementation of a VM written in 32-bit RISC-V with compressed Instructions
 I did not and will not (most likely) implement the Multiply, Atomic, and Floating Point Extentions that are included in the Simon Fraser University Reference Sheet.
 ### Build System
+ * If you wish to build the vm all you have to do is download the zip [here](https://github.com/Gszopinski123/risc-vm/archive/refs/heads/main.zip) or you can use these following commands ``` wget https://github.com/Gszopinski123/risc-vm/archive/refs/heads/main.zip && unzip main.zip && rm -rf main.zip ```
+ * once unzipped you should navigate to the top directory once there you may run ``` make ```, which will build the entire system and clear random executables and object files.
+ * all you have to do is type ``` ./build/bin/riscv_32-vm <insert ELF file here> ``` and the vm will start to work.
+ * if you wish to run the test files you may by running ``` bash run.sh <insert test#.elf> ```(caveat test9.elf does not work fully yet)
+
 
 ### References
 I do not own any of these and are only using them.
