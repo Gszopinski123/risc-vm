@@ -15,3 +15,4 @@ loop:
     # Exit program
     li a7, 10       # a7 = 10 (exit system call number)
     ecall           # Make system call (exit)
+    

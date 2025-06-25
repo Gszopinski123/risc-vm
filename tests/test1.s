@@ -19,3 +19,4 @@ _start:
     # (Optional) Exit the program
     li      a7, 10            # Load the exit system call code (10) into a7
     ecall                     # Make the system call to exit
+    

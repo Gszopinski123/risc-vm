@@ -6,12 +6,10 @@ TESTDIR = tests
 OBJDIR = build/obj
 EXEDIR = build/bin
 build_test: 
-	riscv64-unknown-elf-as -march=rv32imac -o $(OBJDIR)/test1.o $(TESTDIR)/test1.s
-	riscv64-unknown-elf-ld -m elf32lriscv -o $(EXEDIR)/test1.elf $(OBJDIR)/test1.o
-	riscv64-unknown-elf-as -march=rv32imac -o $(OBJDIR)/test2.o $(TESTDIR)/test2.s
-	riscv64-unknown-elf-ld -m elf32lriscv -o $(EXEDIR)/test2.elf $(OBJDIR)/test2.o
-	riscv64-unknown-elf-as -march=rv32imac -o $(OBJDIR)/test3.o $(TESTDIR)/test3.s
-	riscv64-unknown-elf-ld -m elf32lriscv -o $(EXEDIR)/test3.elf $(OBJDIR)/test3.o
+	@for i in $(shell seq 1 7); do \
+		riscv64-unknown-elf-as -march=rv32imac -o $(OBJDIR)/test$$i.o $(TESTDIR)/test$$i.s; \
+		riscv64-unknown-elf-ld -m elf32lriscv -o $(EXEDIR)/test$$i.elf $(OBJDIR)/test$$i.o; \
+	done
 
 build: src/riscv_32.c
 	$(CC) $(CFLAGS) src/riscv_32.c -o build/bin/riscv_32-vm

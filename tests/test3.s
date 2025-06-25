@@ -16,3 +16,4 @@ _start:
     # Exit the program (system call)
     li      a7, 93            # System call number for exit (93 is the syscall number for exit in RISC-V)
     ecall                     # Make the system call to exit
+    

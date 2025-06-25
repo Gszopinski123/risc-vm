@@ -7,7 +7,7 @@ Elf32_Ehdr elfhdr;
 Elf32_Phdr *phdr;
 uint8_t memory[MEMORY_MAX];
 uint32_t reg[xCOUNT];
-
+//still need b_type, j_type and jalr
 enum {
     ci_css_cr = 0x2,
     cl_ciw = 0x0,
@@ -524,11 +524,13 @@ int main(int argc, char* argv[]) {
                         case slt://this is fine
                         {
                             printf("slt\n");
-                            reg[rd] = (reg[r1] < reg[r2] ? 0x00000001 : 0x00000000);
+                            int32_t reg_r2 = reg[r2];
+                            int32_t reg_r1 = reg[r1];
+                            reg[rd] = (reg_r1 < reg_r2 ? 0x00000001 : 0x00000000);
                             printf("after slt: rd: %d\n",reg[rd]);
                             break;
                         }
-                        case sltu://need to fix this technically
+                        case sltu:
                         {
                             printf("sltu\n");
                             reg[rd] = (reg[r1] < reg[r2] ? 0x00000001 : 0x00000000);
@@ -564,14 +566,14 @@ int main(int argc, char* argv[]) {
                         {
                             printf("xori\n");
                             reg[rd] = reg[r1] ^ imm;
-                            printf("after xori: %d\n",reg[rd]);
+                            printf("after xori: 0x%x\n",reg[rd]);
                             break;
                         }
                         case ori:
                         {
                             printf("ori\n");
                             reg[rd] = reg[r1] | imm;
-                            printf("after xori: %d\n",reg[rd]);
+                            printf("after ori: 0x%x\n",reg[rd]);
                             break;
                         }
                         case andi:
@@ -616,7 +618,8 @@ int main(int argc, char* argv[]) {
                         case slti:
                         {
                             printf("slti\n");
-                            reg[rd] = (reg[r1] < bit_extend(imm,12) ? 0x00000001 : 0x00000000);
+                            int32_t reg_r1 = reg[r1];
+                            reg[rd] = (reg_r1 < bit_extend(imm,12) ? 0x00000001 : 0x00000000);
                             printf("after slti: %d\n",reg[rd]);
                             break;
                         }
