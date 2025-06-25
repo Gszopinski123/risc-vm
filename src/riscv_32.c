@@ -7,7 +7,7 @@ Elf32_Ehdr elfhdr;
 Elf32_Phdr *phdr;
 uint8_t memory[MEMORY_MAX];
 uint32_t reg[xCOUNT];
-//still need b_type, j_type and jalr
+//still need jalr
 enum {
     ci_css_cr = 0x2,
     cl_ciw = 0x0,
@@ -18,7 +18,10 @@ enum {
     s_type = 0x23,
     u_type = 0x37,
     u2_typ = 0x17,
-    i3_typ = 0x73
+    i3_typ = 0x73,
+    b_type = 0x63,
+    j_type = 0x6f,
+    jalr = 0x67
 };
 enum 
 {
@@ -79,7 +82,13 @@ enum
     cand = 0x8f,
     cor =  0x8e,
     cxor = 0x8d,
-    csub = 0x8c
+    csub = 0x8c,
+    beq = 0x0,
+    bne = 0x1,
+    blt = 0x4,
+    bge = 0x5,
+    bltu = 0x6,
+    bgeu = 0x7
 };
 int main(int argc, char* argv[]) {
     if (argc < 2) {
@@ -762,6 +771,106 @@ int main(int argc, char* argv[]) {
                         //raise TRAPS here
                         running = 0;
                     }
+                    break;
+                }
+                case b_type:
+                {
+                    printf("b_type\n");
+                    uint8_t funct3 = ((instruction >> 12) & 0x7);
+                    uint8_t rs1 = ((instruction >> 15) & 0x1f);
+                    uint8_t rs2 = ((instruction >> 20) & 0x1f);
+                    uint32_t imm = bit_extend(((instruction >> 8) & 0xf) | 
+                                              (((instruction >> 7) & 0x1) << 11) | 
+                                              (((instruction >> 25) & 0x3f) << 5) |
+                                              (((instruction >> 31) & 0x1) << 12) ,11);
+                    switch(funct3) {
+                        case beq:
+                        {
+                            printf("beq\n");
+                            if (reg[rs1] == reg[rs2]) {
+                                reg[pc] += imm;
+                                printf("move pc!\n");
+                            }
+                            break;
+                        }
+                        case bne:
+                        {
+                            printf("bne\n");
+                            if (reg[rs1] != reg[rs2]) {
+                                reg[pc] += imm;
+                                printf("move pc!\n");
+                            }
+                            break;
+                        }
+                        case blt:
+                        {
+                            printf("blt\n");
+                            int32_t reg_rs1 = reg[rs1];
+                            int32_t reg_rs2 = reg[rs2];
+                            if (reg_rs1 < reg_rs2) {
+                                reg[pc] += imm;
+                                printf("move pc!\n");
+                            }
+                            break;
+                        }
+                        case bge:
+                        {
+                            printf("bge\n");
+                            int32_t reg_rs1 = reg[rs1];
+                            int32_t reg_rs2 = reg[rs2];
+                            if (reg_rs1 >= reg_rs2) {
+                                reg[pc] += imm;
+                                printf("move pc!\n");
+                            }
+                            break;
+                        }
+                        case bltu:
+                        {
+                            printf("bltu\n");
+                            if (reg[rs1] < reg[rs2]) {
+                                reg[pc] += imm;
+                                printf("move pc!\n");
+                            }
+                            break;
+                        }
+                        case bgeu:
+                        {
+                            printf("bgeu\n");
+                            if (reg[rs1] >= reg[rs2]) {
+                                reg[pc] += imm;
+                                printf("move pc!\n");
+                            }
+                            break;
+                        }
+                        default:
+                        {
+                            break;
+                        }
+                    }
+                    break;
+                }
+                case j_type:
+                {
+                    printf("j_type\n");
+                    uint8_t rd = ((instruction >> 7) & 0x1f);
+                    int32_t imm = bit_extend((((instruction >> 12) & 0xff) << 12) | 
+                                  (((instruction >> 20) & 0x1) << 11)  | 
+                                  (((instruction >> 21) & 0x3ff) << 1) |
+                                  (((instruction >> 31) & 0x1) << 20) , 20);
+                    reg[rd] = reg[pc]+4;
+                    reg[pc] += imm;
+                    printf("jal\n");
+                    break;
+                }
+                case jalr:
+                {
+                    printf("jalr\n");
+                    uint8_t rd = ((instruction >> 7) & 0x1f);
+                    uint8_t rs1 = ((instruction >> 15) & 0x1f);
+                    uint32_t imm = bit_extend(((instruction >> 20) & 0xfff),12);
+                    reg[rd] = reg[pc] + 4;
+                    reg[pc] = reg[rs1] + imm;
+                    printf("end of jalr\n");
                     break;
                 }
                 default:
